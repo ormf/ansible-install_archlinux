@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: CC0-1.0
+
+stages:
+  - check
+  - test
+
+.prepare:
+  before_script:
+    - pacman -Sy --needed --noconfirm archlinux-keyring
+    - pacman -Syu --needed --noconfirm ansible-lint ansible-core cocogitto codespell libvirt molecule molecule-plugins python-vagrant qemu-desktop reuse vagrant
+
+check:
+  extends: .prepare
+  stage: check
+  needs: []
+  script:
+    - ./.ci/check.sh
+    - cog check
+
+test:
+  extends: .prepare
+  stage: test
+  needs:
+    - check
+  script:
+    - ansible-galaxy install -r requirements.yml
+    - vagrant plugin install vagrant-libvirt
+    - ./.ci/test.sh
