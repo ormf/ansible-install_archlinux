@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Format boot partition as FAT32
+  ansible.builtin.command: mkfs.fat -F32 -n boot {{ item }}
+  become: true
+  become_user: root
+  changed_when: false
+  loop: "{{ boot_partitions }}"
+  when:
+    - install_archlinux.filesystems.boot.type == 'vfat'
+
+- name: Format boot partition as ext4
+  ansible.builtin.command: mkfs.ext4 -L boot {{ item }}
+  become: true
+  become_user: root
+  changed_when: false
+  loop: "{{ boot_partitions }}"
+  when:
+    - install_archlinux.filesystems.boot.type == 'ext4'

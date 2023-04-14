@@ -1,0 +1,145 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Format two root partitions as btrfs RAID
+  ansible.builtin.command: mkfs.btrfs -f -L root -d raid{{ install_archlinux.filesystems.root.raid_level }} -m raid{{ install_archlinux.filesystems.root.raid_level }} -O no-holes {{ root_partitions[0] }} {{ root_partitions[1] }}
+  become: true
+  become_user: root
+  changed_when: false
+  when:
+    - install_archlinux.filesystems.root.raid_type == 'btrfs'
+    - install_archlinux.filesystems.root.type == 'btrfs'
+    - install_archlinux.system_disks|length == 2
+
+- name: Mount btrfs RAID root partition
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}"
+    src: "{{ root_partitions[0] }}"
+    state: mounted
+    fstype: btrfs
+    opts: "{{ install_archlinux.filesystems.root.mount_opts | join(',') }}"
+  become: true
+  become_user: root
+  when:
+    - install_archlinux.filesystems.root.raid_type == 'btrfs'
+    - install_archlinux.filesystems.root.type == 'btrfs'
+    - install_archlinux.system_disks|length == 2
+
+- name: Format one root partition as btrfs
+  ansible.builtin.command: mkfs.btrfs -f -L root -d single -m single -O no-holes {{ root_partitions[0] }}
+  become: true
+  become_user: root
+  changed_when: false
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+    - install_archlinux.system_disks|length == 1
+
+- name: Mount initial btrfs root partition
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}"
+    src: "{{ root_partitions[0] }}"
+    state: mounted
+    fstype: btrfs
+    opts: "{{ install_archlinux.filesystems.root.mount_opts | join(',') }}"
+  become: true
+  become_user: root
+  when:
+    - install_archlinux.filesystems.root.raid_type == 'btrfs'
+    - install_archlinux.filesystems.root.type == 'btrfs'
+
+- name: Create btrfs subvolume for root in chroot
+  ansible.builtin.command:
+    chdir: "{{ chroot_dir }}"
+    cmd: "btrfs subvolume create {{ install_archlinux.filesystems.root.subvolumes.root }}"
+  become: true
+  become_user: root
+  changed_when: false
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+
+- name: Create btrfs subvolume for home in chroot
+  ansible.builtin.command:
+    chdir: "{{ chroot_dir }}"
+    cmd: "btrfs subvolume create {{ install_archlinux.filesystems.root.subvolumes.home }}"
+  become: true
+  become_user: root
+  changed_when: false
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+
+- name: Unmount initial btrfs root partition
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}"
+    state: unmounted
+  become: true
+  become_user: root
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+
+- name: Mount btrfs root filesystem
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}"
+    src: "{{ root_partitions[0] }}"
+    state: mounted
+    fstype: btrfs
+    opts: "subvol={{ install_archlinux.filesystems.root.subvolumes.root }},{{ install_archlinux.filesystems.root.mount_opts | join(',') }}"
+  become: true
+  become_user: root
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+
+- name: Create /home on btrfs root filesystem
+  ansible.builtin.file:
+    path: "{{ chroot_dir }}/home"
+    group: root
+    mode: "0755"
+    owner: root
+    state: directory
+  become: true
+  become_user: root
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+
+- name: Unmount btrfs root partition
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}"
+    state: unmounted
+  become: true
+  become_user: root
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+
+- name: Create MDADM RAID
+  ansible.builtin.command: >
+    mdadm --create
+    --level={{ install_archlinux.filesystems.root.raid_level }}
+    --raid-devices=2
+    --run /dev/md0 {{ root_partitions[0] }} {{ root_partitions[1] }}
+  become: true
+  become_user: root
+  changed_when: false
+  when:
+    - install_archlinux.filesystems.root.raid_type == "mdadm"
+    - install_archlinux.system_disks|length == 2
+
+- name: Format an MDADM array
+  community.general.filesystem:
+    dev: /dev/md0
+    fstype: "{{ install_archlinux.filesystems.root.type }}"
+  become: true
+  become_user: root
+  when:
+    - install_archlinux.filesystems.root.raid_type == "mdadm"
+    - install_archlinux.system_disks|length == 2
+
+- name: Generate mdadm.conf on new chroot
+  ansible.builtin.shell:
+    cmd: mdadm --detail --scan >> {{ chroot_dir | quote }}/etc/mdadm.conf
+    executable: /bin/bash
+  become: true
+  become_user: root
+  changed_when: false
+  when:
+    - install_archlinux.filesystems.root.raid_type == 'mdadm'
+    - install_archlinux.system_disks|length == 2

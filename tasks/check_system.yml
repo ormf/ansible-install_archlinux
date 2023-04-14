@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Check if in install medium
+  ansible.builtin.set_fact:
+    in_install_medium: true
+  when: '"archiso" in ansible_proc_cmdline | join(" ") or install_archlinux.force_install_medium'
+
+- name: Check if in Hetzner rescue system
+  ansible.builtin.set_fact:
+    in_rescue_system: true
+  when: '"rescue" in ansible_proc_cmdline | join(" ") or install_archlinux.force_rescue_system'
+
+- name: Fail if both in install medium and rescue system
+  ansible.builtin.fail:
+    msg: "Both in install medium and rescue system!"
+  when: in_install_medium and in_rescue_system
+
+- name: Fail if neither in install medium nor rescue system
+  ansible.builtin.fail:
+    msg: "Neither in install medium nor in rescue system!"
+  when: not in_install_medium and not in_rescue_system

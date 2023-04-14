@@ -1,0 +1,200 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Show install_archlinux
+  ansible.builtin.debug:
+    var: install_archlinux
+
+- name: Merge install config with defaults
+  ansible.builtin.set_fact:
+    install_archlinux: "{{ install_archlinux_defaults | ansible.builtin.combine(install_archlinux, recursive=true) }}"
+
+# TODO: validate install_archlinux
+
+- name: Set global facts for other roles
+  ansible.builtin.set_fact:
+    chroot_dir: "{{ install_archlinux.chroot_dir }}"
+
+- name: Check system
+  ansible.builtin.include_tasks: check_system.yml
+
+- name: Check UEFI
+  ansible.builtin.include_tasks: check_uefi.yml
+
+- name: Check disks
+  ansible.builtin.include_tasks: check_disks.yml
+
+- name: Create partitions
+  ansible.builtin.include_tasks: create_partitions.yml
+  when: not partitions_created
+
+- name: Encrypt partitions
+  ansible.builtin.include_tasks: encrypt_partitions.yml
+  when:
+    - not root_partition_encrypted
+    - install_archlinux.disk_password is defined
+    - install_archlinux.disk_password is string
+    - install_archlinux.disk_password | length > 0
+
+- name: Open encrypted partitions
+  ansible.builtin.include_tasks: open_encrypted_partitions.yml
+  when:
+    - not root_partition_unlocked
+    - install_archlinux.disk_password is defined
+    - install_archlinux.disk_password is string
+    - install_archlinux.disk_password | length > 0
+
+- name: Format boot partitions
+  ansible.builtin.include_tasks: format_boot_partitions.yml
+  when:
+    - not boot_partition_formatted
+    - not boot_partition_mounted
+
+- name: Format root partitions
+  ansible.builtin.include_tasks: format_root_partitions.yml
+  when:
+    - not root_partition_formatted
+    - not root_partition_mounted
+
+- name: Mount partitions
+  ansible.builtin.include_tasks: mount_partitions.yml
+  when:
+    - not boot_partition_mounted
+    - not root_partition_mounted
+
+# NOTE: sets 'bootstrap_chroot_dir' fact, representing the chroot_dir of the bootstrap medium
+- name: Download, extract and mount bootstrap image
+  ansible.builtin.include_tasks: bootstrap_image.yml
+  when: in_rescue_system
+
+- name: Pacstrap into chroot
+  ansible.builtin.include_tasks: pacstrap.yml
+
+- name: Run genfstab from install medium to set /etc/fstab in chroot
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      genfstab -U {{ chroot_dir }} > {{ chroot_dir }}/etc/fstab
+    executable: /bin/bash
+  become: true
+  become_user: root
+  changed_when: false
+  when: in_install_medium
+
+- name: Run genfstab from bootstrap chroot to set /etc/fstab in chroot
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      chroot {{ bootstrap_chroot_dir }} \
+      genfstab -U {{ chroot_dir }} > {{ chroot_dir }}/etc/fstab
+    executable: /bin/bash
+  become: true
+  become_user: root
+  changed_when: false
+  when:
+    - in_rescue_system
+
+- name: Prepare chroot
+  ansible.builtin.include_tasks: prepare_chroot.yml
+
+- name: Configure chroot
+  ansible.builtin.include_tasks: configure_chroot.yml
+
+- name: Configure pacman in chroot
+  ansible.builtin.include_role:
+    name: archlinux.pacman
+    tasks_from: chroot
+    handlers_from: chroot
+
+- name: Set fact about whether no log should be used for users role
+  ansible.builtin.set_fact:
+    users_config: "{{ {'no_log': false} }}"
+  when:
+    - users_config is not defined
+    - not install_archlinux.no_log
+
+- name: Configure users in chroot
+  ansible.builtin.include_role:
+    name: archlinux.users
+    tasks_from: chroot
+
+- name: Configure mkinitcpio and generate initrd in chroot
+  ansible.builtin.include_role:
+    name: archlinux.mkinitcpio
+    tasks_from: chroot
+
+- name: Configure systemd-networkd in chroot
+  ansible.builtin.include_role:
+    name: archlinux.systemd_networkd
+    tasks_from: chroot
+    handlers_from: chroot
+
+- name: Show kernel_cmdline
+  ansible.builtin.debug:
+    var: kernel_cmdline
+
+- name: Set kernel cmdline parameters
+  ansible.builtin.include_tasks: installation_kernel_cmdline.yml
+
+- name: Show kernel_cmdline
+  ansible.builtin.debug:
+    var: kernel_cmdline
+
+- name: Set grub config fact if no grub config is defined
+  ansible.builtin.set_fact:
+    grub: "{{ {'system_disks': install_archlinux.system_disks} }}"
+  when:
+    - grub is not defined or not grub
+
+- name: Set grub config fact if grub config is defined
+  ansible.builtin.set_fact:
+    grub: "{{ grub | ansible.builtin.combine({'system_disks': install_archlinux.system_disks}, recursive=true) }}"
+  when:
+    - grub is defined
+    - grub is mapping
+
+- name: Configure grub in chroot
+  ansible.builtin.include_role:
+    name: archlinux.grub
+    tasks_from: chroot
+    handlers_from: chroot
+  when: bootloader_type == 'legacy'
+
+- name: Configure systemd-boot in chroot
+  ansible.builtin.include_role:
+    name: archlinux.systemd_boot
+    tasks_from: chroot
+    handlers_from: chroot
+  when: bootloader_type == 'uefi'
+
+- name: Show chroot_dir
+  ansible.builtin.debug:
+    var: chroot_dir
+
+- name: Configure systemd-timesyncd in chroot
+  ansible.builtin.include_role:
+    name: archlinux.systemd_timesyncd
+    tasks_from: chroot
+    handlers_from: chroot
+
+- name: Configure systemd-resolved in chroot
+  ansible.builtin.include_role:
+    name: archlinux.systemd_resolved
+    tasks_from: chroot
+    handlers_from: chroot
+
+- name: Enable services inside chroot
+  ansible.builtin.command: chroot {{ chroot_dir }} systemctl enable {{ item }}
+  loop: "{{ install_archlinux.enabled_services }}"
+  become: true
+  become_user: root
+  changed_when: false
+  notify: clear package cache
+
+- name: Remove state file for successful pacstrap
+  ansible.builtin.file:
+    path: "{{ chroot_dir }}/pacstrap_complete"
+    state: absent
+  become: true
+  become_user: root

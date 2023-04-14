@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Mount btrfs root filesystem
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}"
+    src: "{{ root_partitions[0] }}"
+    state: mounted
+    fstype: btrfs
+    opts: "subvol={{ install_archlinux.filesystems.root.subvolumes.root }},{{ install_archlinux.filesystems.root.mount_opts | join(',') }}"
+  become: true
+  become_user: root
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+    - not root_partition_mounted
+
+- name: Mount /home on btrfs root filesystem
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}/home"
+    src: "{{ root_partitions[0] }}"
+    state: mounted
+    fstype: btrfs
+    opts: "subvol={{ install_archlinux.filesystems.root.subvolumes.home }},{{ install_archlinux.filesystems.root.mount_opts | join(',') }}"
+  become: true
+  become_user: root
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+    - not home_partition_mounted
+
+- name: Mount MDADM RAID root partition
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}"
+    src: /dev/md0
+    state: mounted
+    fstype: "{{ install_archlinux.filesystems.root.type }}"
+  become: true
+  become_user: root
+  when:
+    - install_archlinux.filesystems.root.raid_type == 'mdadm'
+    - install_archlinux.system_disks|length == 2
+
+- name: Mount boot filesystem
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}/boot"
+    src: "{{ install_archlinux.system_disks[0] }}{{ partition_identifier }}{{ boot_partition_number }}"
+    state: mounted
+    fstype: "{{ install_archlinux.filesystems.boot.type }}"
+  become: true
+  become_user: root
+  when: not boot_partition_mounted

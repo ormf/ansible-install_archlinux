@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: archlinux.grub
+  src: git+https://gitlab.archlinux.org/dvzrv/ansible-grub.git
+  version: main
+- name: archlinux.pacman
+  src: git+https://gitlab.archlinux.org/dvzrv/ansible-pacman.git
+  version: main
+- name: archlinux.mkinitcpio
+  src: git+https://gitlab.archlinux.org/dvzrv/ansible-mkinitcpio.git
+  version: main
+- name: archlinux.systemd_boot
+  src: git+https://gitlab.archlinux.org/dvzrv/ansible-systemd_boot.git
+  version: main
+- name: archlinux.systemd_networkd
+  src: git+https://gitlab.archlinux.org/dvzrv/ansible-systemd_networkd.git
+  version: main
+- name: archlinux.systemd_resolved
+  src: git+https://gitlab.archlinux.org/dvzrv/ansible-systemd_resolved.git
+  version: main
+- name: archlinux.systemd_timesyncd
+  src: git+https://gitlab.archlinux.org/dvzrv/ansible-systemd_timesyncd.git
+  version: main
+- name: archlinux.users
+  src: git+https://gitlab.archlinux.org/dvzrv/ansible-users.git
+  version: main

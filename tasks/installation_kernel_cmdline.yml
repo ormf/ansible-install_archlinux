@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Get UUID of root partition
+  ansible.builtin.command:
+    argv:
+      - blkid
+      - -o
+      - value
+      - -s
+      - UUID
+      - "{{ item }}"
+  become: true
+  become_user: root
+  changed_when: false
+  loop: "{{ root_partitions }}"
+  register: root_partition_uuid
+
+- name: Add kernel cmdline options for single plain btrfs disk
+  ansible.builtin.set_fact:
+    kernel_cmdline: "{{ kernel_cmdline + ['root=UUID=' + root_partition_uuid.results[0].stdout, 'rootflags=subvol=/' + install_archlinux.filesystems.root.subvolumes.root + ',' + install_archlinux.filesystems.root.mount_opts | join(',')] }}"
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+    - install_archlinux.filesystems.root.raid_type == 'btrfs'
+    - not install_archlinux.disk_password is string or (install_archlinux.disk_password is string and install_archlinux.disk_password | length == 0)
+
+- name: Populate kernel cmdline for MDADM with btrfs as root filesystem
+  ansible.builtin.set_fact:
+    kernel_cmdline: "{{ kernel_cmdline + ['root=/dev/md0', 'rootflags=subvol=/' + install_archlinux.filesystems.root.subvolumes.root + ',' + install_archlinux.filesystems.root.mount_opts | join(',')] }}"
+  when:
+    - install_archlinux.filesystems.root.raid_type == 'mdadm'
+    - install_archlinux.filesystems.root.type == 'btrfs'
+    - not install_archlinux.disk_password is string or (install_archlinux.disk_password is string and install_archlinux.disk_password | length == 0)
+
+- name: Set kernel_cmdline fact for two crypto disks
+  ansible.builtin.set_fact:
+    kernel_cmdline: "{{ kernel_cmdline + ['rd.luks.name=' + root_partition_uuid.results[0].stdout + '=root0', 'rd.luks.name=' + root_partition_uuid.results.[1].stdout + '=root1', 'rd.luks.options=' + root_partition_uuid.results[0].stdout + '=' + install_archlinux.filesystems.root.luks_opts | join(',')] }}"
+  when:
+    - install_archlinux.disk_password is string
+    - install_archlinux.disk_password | length > 0
+    - install_archlinux.system_disks |length == 2
+
+- name: Set kernel_cmdline fact for single crypto disk
+  ansible.builtin.set_fact:
+    kernel_cmdline: "{{ kernel_cmdline + ['rd.luks.name=' + root_partition_uuid.results[0].stdout + '=root0', 'rd.luks.options=' + root_partition_uuid.results[0].stdout + '=' + install_archlinux.filesystems.root.luks_opts | join(',')] }}"
+  when:
+    - install_archlinux.disk_password is string
+    - install_archlinux.disk_password | length > 0
+    - install_archlinux.system_disks | length == 1
+
+- name: Create /etc/ansible/facts.d in chroot
+  ansible.builtin.file:
+    path: "{{ chroot_dir }}/etc/ansible/facts.d"
+    group: root
+    mode: "0755"
+    owner: root
+    state: directory
+  become: true
+  become_user: root
+
+- name: Copy kernel_cmdline to /etc/ansible/facts.d in chroot
+  ansible.builtin.copy:
+    dest: "{{ chroot_dir }}/etc/ansible/facts.d/cmdline_root.fact"
+    content: '{"kernel_cmdline": {{ kernel_cmdline }}}'
+    group: root
+    mode: "0600"
+    owner: root
+  become: true
+  become_user: root

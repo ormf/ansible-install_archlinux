@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+# override for defaults
+install_archlinux_defaults:
+  bootstrap:
+    chroot_dir: root.x86_64
+    mirrorlist_country: all
+    mirrorlist_prefetch: true
+    prefix_dir: /tmp
+    sigkey: 3E80CA1A8B89F69CBA57D98A76A5EF9054449A5C
+    version: latest
+  chroot_dir: /mnt
+  disk_password:
+  enabled_services:
+    - auditd
+    - sshd
+    - systemd-networkd
+    - systemd-resolved
+    - fstrim.timer
+  filesystems:
+    boot:
+      type: vfat
+    root:
+      devmapper_prefix: root
+      luks_opts:
+        - keyfile-timeout=10s
+        - discard
+      mount_opts:
+        - compress=zstd
+        - discard
+      raid_level: 0
+      raid_type: btrfs
+      subvolumes:
+        root: "@"
+        home: "@home"
+      type: btrfs
+  force_install_medium: false
+  force_rescue_system: false
+  hostname: archlinux
+  no_log: true
+  packages:
+    - base
+    - btrfs-progs
+    - htop
+    - linux
+    - openssh
+    - python
+    - tree
+    - vim
+  system_disks: []
+
+# defaults for variables used by the role
+boot_partition_formatted: false
+boot_partition_mounted: false
+boot_partitions_short: []
+bootstrap_chroot_dir:
+bootstrap_home_partition_mounted: false
+bootstrap_root_partition_mounted: false
+home_partition_mounted: false
+in_rescue_system: false
+in_install_medium: false
+kernel_cmdline: []
+partitions_created: false
+partition_identifier: ""
+root_partition_encrypted: false
+root_partition_formatted: false
+root_partition_mounted: false
+root_partition_unlocked: false
+root_partitions_short: []
+boot_partitions: []
+root_partitions: []
+devmapper_prefix: root
+system_disks_short: []

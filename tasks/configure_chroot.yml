@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+# TODO: add locale integration
+# - name: Configure locale in chroot
+#   ansible.builtin.include_role:
+#     name: locale
+#     tasks_from: chroot
+#     handlers_from: chroot
+
+- name: Run systemd-firstboot in chroot
+  ansible.builtin.command:
+    argv:
+      - chroot
+      - "{{ chroot_dir }}"
+      - systemd-firstboot
+      - --locale=C.UTF-8
+      - --timezone=UTC
+      - --keymap=us
+      - --hostname={{ install_archlinux.hostname }}
+  become: true
+  become_user: root
+  changed_when: false
+
+- name: Copy /etc/resolv.conf to chroot
+  ansible.builtin.copy:
+    dest: "{{ chroot_dir }}/etc/resolv.conf"
+    force: "yes"
+    group: root
+    mode: "0644"
+    owner: root
+    remote_src: "yes"
+    src: /etc/resolv.conf
+  become: true
+  become_user: root
+  changed_when: false

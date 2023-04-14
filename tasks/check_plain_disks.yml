@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Set fact about target root partitions
+  ansible.builtin.set_fact:
+    root_partitions: "{{ root_partitions + ['/dev/' + item + root_partition_number | string] }}"
+  loop: "{{ system_disks_short }}"
+
+- name: Get partition type for plain root partitions
+  ansible.builtin.command:
+    cmd: blkid -o value -s TYPE {{ item }}
+  changed_when: false
+  ignore_errors: true
+  loop: "{{ root_partitions }}"
+  register: plain_root_partition_type
+  # when: partitions_created
+
+- name: Show plain_root_partition_type
+  ansible.builtin.debug:
+    var: plain_root_partition_type
+
+- name: Set fact about whether plain partition for / is already formatted
+  ansible.builtin.set_fact:
+    root_partition_formatted: true
+  loop: "{{ system_disks_short }}"
+  loop_control:
+    index_var: i
+  when:
+    - plain_root_partition_type.results[i].stdout == install_archlinux.filesystems.root.type

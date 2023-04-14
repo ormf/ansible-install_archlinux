@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Open LUKS formatted partitions
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      printf {{ install_archlinux.disk_password | quote }} | \
+      cryptsetup luksOpen -q \
+      {{ item + partition_identifier + root_partition_number | quote }} \
+      {{ install_archlinux.filesystems.root.devmapper_prefix + disk_index | quote }}
+    executable: /bin/bash
+    creates: root_partitions[disk_index]
+  become: true
+  become_user: root
+  changed_when: false
+  loop: "{{ install_archlinux.system_disks | flatten(levels=1) }}"
+  loop_control:
+    index_var: disk_index
+  no_log: "{{ install_archlinux.no_log }}"

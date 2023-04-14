@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Create GRUB partition
+  ansible.builtin.command: sgdisk -g --clear -n 1:0:+10M {{ item }} -c 1:boot -t 1:ef02
+  loop: "{{ install_archlinux.system_disks }}"
+  become: true
+  become_user: root
+  changed_when: false
+  when: bootloader_type is defined and bootloader_type == "legacy"
+
+- name: Create boot partition
+  ansible.builtin.command: sgdisk -n 2:0:+500M {{ item }} -c 2:boot
+  loop: "{{ install_archlinux.system_disks }}"
+  become: true
+  become_user: root
+  changed_when: false
+  when: bootloader_type is defined and bootloader_type == "legacy"
+
+- name: Create root partition
+  ansible.builtin.command: sgdisk -n 3:0:0 {{ item }} -c 3:root
+  loop: "{{ install_archlinux.system_disks }}"
+  become: true
+  become_user: root
+  changed_when: false
+  when: bootloader_type is defined and bootloader_type == "legacy"
+
+- name: Create EFI system partition (ESP)
+  ansible.builtin.command: sgdisk -g --clear -n 1:0:+550M {{ item }} -c 1:efi -t 1:ef00
+  become: true
+  become_user: root
+  changed_when: false
+  loop: "{{ install_archlinux.system_disks }}"
+  when: bootloader_type is defined and bootloader_type == "uefi"
+
+- name: Create root partition
+  ansible.builtin.command: sgdisk -n 2:0:0 {{ item }} -c 2:root
+  become: true
+  become_user: root
+  changed_when: false
+  loop: "{{ install_archlinux.system_disks }}"
+  when: bootloader_type is defined and bootloader_type == "uefi"

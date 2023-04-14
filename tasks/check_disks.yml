@@ -1,0 +1,206 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Fail if there are more than two system disks
+  ansible.builtin.fail:
+    msg: "There are more than two system disks: {{ install_archlinux.system_disks | join(', ') }}"
+  when: install_archlinux.system_disks|length > 2
+
+- name: Retrieve stats about system disks
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ install_archlinux.system_disks }}"
+  register: disks_stat
+
+- name: Checking stats of system disks
+  ansible.builtin.fail:
+    msg: "System disk is not available: {{ item }}"
+  loop: "{{ disks_stat['results'] }}"
+  when: not (item.stat.exists or item.stat.writable)
+
+- name: Set fact about partition identifier for NVME drives
+  ansible.builtin.set_fact:
+    partition_identifier: "p"
+  when: install_archlinux.system_disks | join(' ') | regex_search('(nvme)')
+
+- name: Set fact about whether NVME drives are found
+  ansible.builtin.set_fact:
+    nvme_system_disks: true
+  when: install_archlinux.system_disks | join(' ') | regex_search('(nvme)')
+
+- name: Set fact about disk device short names
+  ansible.builtin.set_fact:
+    system_disks_short: "{{ system_disks_short + [item | regex_replace('^/dev/(.*)$', '\\1')] }}"
+  loop: "{{ install_archlinux.system_disks }}"
+
+- name: Set fact about partition numbers for UEFI systems
+  ansible.builtin.set_fact:
+    boot_partition_number: 1
+    root_partition_number: 2
+  when:
+    - bootloader_type is defined
+    - bootloader_type == 'uefi'
+
+- name: Set fact about partition numbers for legacy systems
+  ansible.builtin.set_fact:
+    boot_partition_number: 2
+    root_partition_number: 3
+  when:
+    - bootloader_type is defined
+    - bootloader_type == 'legacy'
+
+- name: Set fact about boot device short names (on UEFI system)
+  ansible.builtin.set_fact:
+    boot_partitions_short: "{{ boot_partitions_short + [[item, partition_identifier, boot_partition_number] | join('')] }}"
+  loop: "{{ system_disks_short }}"
+  when:
+    - bootloader_type is defined
+    - bootloader_type == 'uefi'
+
+- name: Set fact about boot device short names (on legacy system)
+  ansible.builtin.set_fact:
+    boot_partitions_short: "{{ boot_partitions_short + [[item, partition_identifier, boot_partition_number] | join('')] }}"
+  loop: "{{ system_disks_short }}"
+  when:
+    - bootloader_type is defined
+    - bootloader_type == 'legacy'
+
+- name: Set fact about target boot partitions
+  ansible.builtin.set_fact:
+    boot_partitions: "{{ boot_partitions + [item + boot_partition_number | string] }}"
+  loop: "{{ install_archlinux.system_disks }}"
+
+- name: Set fact about root device short names (on UEFI system)
+  ansible.builtin.set_fact:
+    root_partitions_short: "{{ root_partitions_short + [[item, partition_identifier, root_partition_number] | join('')] }}"
+  loop: "{{ system_disks_short }}"
+  when:
+    - bootloader_type is defined
+    - bootloader_type == 'uefi'
+
+- name: Set fact about root device short names (on legacy system)
+  ansible.builtin.set_fact:
+    root_partitions_short: "{{ root_partitions_short + [[item, partition_identifier, root_partition_number] | join('')] }}"
+  loop: "{{ system_disks_short }}"
+  when:
+    - bootloader_type is defined
+    - bootloader_type == 'legacy'
+
+- name: Show ansible facts about system disks
+  ansible.builtin.debug:
+    msg: ansible_facts.devices[item]['partitions']
+  loop: "{{ system_disks_short }}"
+  loop_control:
+    index_var: i
+
+- name: Set fact about whether partitions have been created on disks already
+  ansible.builtin.set_fact:
+    partitions_created: true
+  loop: "{{ system_disks_short }}"
+  loop_control:
+    index_var: i
+  when:
+    - ansible_facts.devices[item]['partitions'][boot_partitions_short[i]] is defined
+    - ansible_facts.devices[item]['partitions'][root_partitions_short[i]] is defined
+
+- name: Get partition type for boot partitions
+  ansible.builtin.command:
+    cmd: blkid -o value -s TYPE {{ item }}
+  changed_when: false
+  loop: "{{ boot_partitions }}"
+  register: boot_partition_type
+  when: partitions_created
+
+- name: Get partition type for root
+  ansible.builtin.command:
+    cmd: blkid -o value -s TYPE {{ ["/dev/", root_partitions_short[i]] | join('') }}
+  changed_when: false
+  loop: "{{ system_disks_short }}"
+  loop_control:
+    index_var: i
+  register: root_partition_type
+  when: partitions_created
+
+- name: Show devices
+  ansible.builtin.debug:
+    var: ansible_facts.devices[item]
+  loop: "{{ system_disks_short }}"
+  loop_control:
+    index_var: i
+
+- name: Show boot_partition_type
+  ansible.builtin.debug:
+    var: boot_partition_type.results[i]
+  loop: "{{ system_disks_short }}"
+  loop_control:
+    index_var: i
+
+- name: Set fact about whether a partition for /boot has already been created
+  ansible.builtin.set_fact:
+    boot_partition_formatted: true
+  loop: "{{ system_disks_short }}"
+  loop_control:
+    index_var: i
+  when:
+    - ansible_facts.devices[item]['partitions'][boot_partitions_short[i]]['links']['labels'] is defined
+    - ansible_facts.devices[item]['partitions'][boot_partitions_short[i]]['links']['labels'] == ['boot']
+    - boot_partition_type.results[i].stdout == install_archlinux.filesystems.boot.type
+
+- name: Set fact about whether a partition for /boot has already been mounted by install medium
+  ansible.builtin.set_fact:
+    boot_partition_mounted: true
+  loop: "{{ ansible_facts.mounts | flatten(levels=1) }}"
+  when:
+    - item["mount"] == chroot_dir + '/boot'
+    - item["device"] == boot_partitions[0]
+
+# NOTE: sets root_partitions fact
+- name: Include tasks to check encrypted disks if a disk password is provided
+  ansible.builtin.include_tasks: check_encrypted_disks.yml
+  when:
+    - install_archlinux.disk_password is defined
+    - install_archlinux.disk_password is string
+    - install_archlinux.disk_password | length > 0
+
+# NOTE: sets root_partitions fact
+- name: Include tasks to check plain disks if a disk password is not provided
+  ansible.builtin.include_tasks: check_plain_disks.yml
+  when:
+    - install_archlinux.disk_password is not defined or not install_archlinux.disk_password or (install_archlinux.disk_password is defined and install_archlinux.disk_password is string and install_archlinux.disk_password | length < 1)
+
+- name: Set fact about whether / has already been mounted to chroot_dir
+  ansible.builtin.set_fact:
+    root_partition_mounted: true
+  loop: "{{ ansible_facts.mounts | flatten(levels=1) }}"
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+    - item["mount"] == chroot_dir
+    - item["device"] == root_partitions[0]
+
+- name: Set fact about whether /home has already been mounted to chroot_dir
+  ansible.builtin.set_fact:
+    home_partition_mounted: true
+  loop: "{{ ansible_facts.mounts | flatten(levels=1) }}"
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+    - item["mount"] == chroot_dir + '/home'
+    - item["device"] == root_partitions[0]
+
+- name: Set fact about whether / has already been mounted to bootstrap_chroot_dir
+  ansible.builtin.set_fact:
+    bootstrap_root_partition_mounted: true
+  loop: "{{ ansible_facts.mounts | flatten(levels=1) }}"
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+    - item["mount"] == install_archlinux.bootstrap.prefix_dir + '/' + install_archlinux.bootstrap.chroot_dir + chroot_dir
+    - item["device"] == root_partitions[0]
+
+- name: Set fact about whether /home has already been mounted to bootstrap_chroot_dir
+  ansible.builtin.set_fact:
+    bootstrap_home_partition_mounted: true
+  loop: "{{ ansible_facts.mounts | flatten(levels=1) }}"
+  when:
+    - install_archlinux.filesystems.root.type == 'btrfs'
+    - item["mount"] == install_archlinux.bootstrap.prefix_dir + '/' + install_archlinux.bootstrap.chroot_dir + '/home'
+    - item["device"] == root_partitions[0]

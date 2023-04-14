@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: CC0-1.0
+
+branch_whitelist = [ "main" ]
+ignore_merge_commits = true
+
+pre_bump_hooks = [
+  "./.ci/check.sh",
+]
+
+post_bump_hooks = [
+    "git push",
+    "git push origin {{version}}",
+]
+
+[changelog]
+path = "CHANGELOG.md"

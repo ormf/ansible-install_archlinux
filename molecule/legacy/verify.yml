@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Get file information on initramfs
+      ansible.builtin.stat:
+        path: /boot/initramfs-linux.img
+      register: initramfs
+    - name: Fail if initramfs does not exist
+      ansible.builtin.fail:
+        msg: /boot/initramfs-linux.img has not been created!
+      when: not initramfs.stat.exists

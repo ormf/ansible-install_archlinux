@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Check whether the machine is booted using UEFI
+  ansible.builtin.stat:
+    path: /sys/firmware/efi
+    get_checksum: "no"
+  register: efi_dir
+
+- name: Set bootloader_type fact to uefi
+  ansible.builtin.set_fact:
+    bootloader_type: uefi
+  notify: install systemd-boot bootloader to efi in chroot
+  when: efi_dir.stat.exists and efi_dir.stat.isdir
+
+- name: Set bootloader_type fact to legacy
+  ansible.builtin.set_fact:
+    bootloader_type: legacy
+  notify: install grub to disk in chroot
+  when: not efi_dir.stat.exists
+
+- name: Set boot_parition_number for legacy
+  ansible.builtin.set_fact:
+    boot_partition_number: 2
+  when: not efi_dir.stat.exists
+
+- name: Set boot_parition_number fact for UEFI
+  ansible.builtin.set_fact:
+    boot_partition_number: 1
+  when: efi_dir.stat.exists and efi_dir.stat.isdir
+
+- name: Set root_parition_number for legacy
+  ansible.builtin.set_fact:
+    root_partition_number: 3
+  when: not efi_dir.stat.exists
+
+- name: Set root_parition_number fact for UEFI
+  ansible.builtin.set_fact:
+    root_partition_number: 2
+  when: efi_dir.stat.exists and efi_dir.stat.isdir

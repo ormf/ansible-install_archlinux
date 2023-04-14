@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Converge
+  hosts: all
+  gather_facts: true
+  vars:
+    grub:
+      disable_submenu: true
+      timeout: 3
+    install_archlinux:
+      force_install_medium: true
+      hostname: test
+      no_log: false
+      system_disks:
+        - /dev/vdb
+    mkinitcpio:
+      binaries:
+        - /usr/bin/btrfs
+      modules:
+        - btrfs
+      presets:
+        - default
+    pacman:
+      mirrorlist_country: Germany
+    reflector:
+      country: Germany
+    systemd_networkd:
+      apply: true
+      networks:
+        ethernet:
+          - Match:
+              - Name: eth0
+          - Network:
+              - DHCP: "yes"
+    systemd_resolved:
+      dns:
+        - 8.8.8.8
+    systemd_timesyncd:
+      timezone: Europe/Berlin
+    users:
+      - name: testuser
+        authorized_keys:
+          - fake_foo
+        comment: a test user
+        git_repos: []
+        groups:
+          - wheel
+        password: hunter2
+        state: present
+        shell: /usr/bin/bash
+  tasks:
+    - name: Include archlinux.install_archlinux
+      ansible.builtin.include_role:
+        name: archlinux.install_archlinux

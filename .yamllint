@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: CC0-1.0
+---
+
+extends: default
+
+rules:
+  line-length:
+    max: 350
+    level: warning

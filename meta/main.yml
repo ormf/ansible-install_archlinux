@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+galaxy_info:
+  author: David Runge
+  description: Install Arch Linux from installation medium or bootstrap image
+  company: Arch Linux
+  license: GPL-3.0-or-later
+  min_ansible_version: "7.3"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - all
+  role_name: install_archlinux
+  namespace: archlinux
+  galaxy_tags:
+    - archlinux
+    - installation
+    - hardware
+    - vm
+dependencies: []

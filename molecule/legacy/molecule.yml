@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+dependency:
+  name: galaxy
+driver:
+  name: vagrant
+  default_box: archlinux/archlinux
+  provision: true
+  provider:
+    name: libvirt
+platforms:
+  - name: instance
+    box: archlinux/archlinux
+    memory: 1024
+    cpus: 2
+    provider:
+      name: libvirt
+      options:
+    provider_raw_config_args:
+      - "storage :file, :size => '20G'"
+    instance_raw_config_args:
+      - "vm.provision 'shell', inline: 'pacman -Sy --needed --noconfirm archlinux-keyring'"
+      - "vm.provision 'shell', inline: 'pacman -Syu --ignore linux --needed --noconfirm arch-install-scripts btrfs-progs dosfstools gptfdisk python'"
+provisioner:
+  name: ansible
+  options:
+    vvv: true
+verifier:
+  name: ansible

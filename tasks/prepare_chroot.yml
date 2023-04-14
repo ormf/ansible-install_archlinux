@@ -1,0 +1,114 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Mount /proc to new chroot
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}/proc"
+    src: proc
+    state: mounted
+    opts: nosuid,noexec,nodev
+    fstype: proc
+  become: true
+  become_user: root
+
+- name: Get status of new chroot /proc
+  ansible.builtin.stat:
+    path: "{{ chroot_dir }}/proc/uptime"
+  register: new_chroot_proc
+
+- name: Fail if new chroot /proc does not exist
+  ansible.builtin.fail:
+    msg: New chroot /proc does not exist after mounting it
+  when: not new_chroot_proc.stat.exists
+
+- name: Mount /sys to new chroot
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}/sys"
+    src: sys
+    state: mounted
+    opts: nosuid,noexec,nodev,ro
+    fstype: sysfs
+  become: true
+  become_user: root
+
+- name: Mount /sys/firmware/efi/efivars to new chroot
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}/sys/firmware/efi/efivars"
+    src: efivarfs
+    state: mounted
+    opts: nosuid,noexec,nodev
+    fstype: efivarfs
+  become: true
+  become_user: root
+  when: bootloader_type == "uefi"
+
+- name: Get status of new chroot /sys
+  ansible.builtin.stat:
+    path: "{{ chroot_dir }}/sys/dev"
+  register: new_chroot_sys
+
+- name: Fail if new chroot /sys does not exist
+  ansible.builtin.fail:
+    msg: New chroot /sys does not exist after mounting it
+  when: not new_chroot_sys.stat.exists
+
+- name: Mount /dev to new chroot
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}/dev"
+    src: udev
+    state: mounted
+    opts: mode=0755,nosuid
+    fstype: devtmpfs
+  become: true
+  become_user: root
+
+- name: Mount /dev/pts to new chroot
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}/dev/pts"
+    src: devpts
+    state: mounted
+    opts: mode=0620,gid=5,nosuid,noexec
+    fstype: devpts
+  become: true
+  become_user: root
+
+- name: Mount /dev/shm to new chroot
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}/dev/shm"
+    src: shm
+    state: mounted
+    opts: mode=1777,nosuid,nodev
+    fstype: tmpfs
+  become: true
+  become_user: root
+
+- name: Get status of new chroot /dev
+  ansible.builtin.stat:
+    path: "{{ chroot_dir }}/dev/zero"
+  register: new_chroot_dev
+
+- name: Fail if new chroot /dev does not exist
+  ansible.builtin.fail:
+    msg: New chroot /dev does not exist after mounting it
+  when: not new_chroot_dev.stat.exists
+
+- name: Mount /run to new chroot
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}/run"
+    src: /run
+    state: mounted
+    opts: bind
+    fstype: run
+  become: true
+  become_user: root
+
+- name: Mount /tmp to new chroot
+  ansible.posix.mount:
+    path: "{{ chroot_dir }}/tmp"
+    src: tmp
+    state: mounted
+    opts: mode=1777,strictatime,nodev,nosuid
+    fstype: tmpfs
+  become: true
+  become_user: root

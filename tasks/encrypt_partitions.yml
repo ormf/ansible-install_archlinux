@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: LUKS format partitions
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      printf {{ install_archlinux.disk_password | quote }} | \
+      cryptsetup luksFormat -q \
+      --label root{{ i | quote }} \
+      {{ item | quote }}{{ partition_identifier | quote }}{{ root_partition_number | quote }}
+    executable: /bin/bash
+  become: true
+  become_user: root
+  changed_when: false
+  loop: "{{ install_archlinux.system_disks | flatten(levels=1) }}"
+  loop_control:
+    index_var: i
+  no_log: "{{ install_archlinux.no_log }}"

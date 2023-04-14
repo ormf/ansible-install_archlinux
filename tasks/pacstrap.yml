@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Configure pacman in bootstrap chroot
+  vars:
+    chroot_dir: "{{ bootstrap_chroot_dir }}"
+  ansible.builtin.include_role:
+    name: archlinux.pacman
+    tasks_from: chroot
+    handlers_from: chroot
+  when: in_rescue_system
+
+- name: Get status of pacstrap from install medium
+  ansible.builtin.stat:
+    path: "{{ chroot_dir }}/pacstrap_done"
+  register: pacstrap_chroot_done
+
+- name: Get status of pacstrap from bootstrap chroot
+  ansible.builtin.stat:
+    path: "{{ bootstrap_chroot_dir }}{{ chroot_dir }}/pacstrap_done"
+  become: true
+  become_user: root
+  register: pacstrap_bootstrap_chroot_done
+
+- name: Check for Intel processor and set ucode
+  ansible.builtin.set_fact:
+    ucode: "intel-ucode"
+  when: "'GenuineIntel' in ansible_facts['processor']"
+
+- name: Check for AMD processor and set ucode
+  ansible.builtin.set_fact:
+    ucode: "amd-ucode"
+  when: "'AuthenticAMD' in ansible_facts['processor']"
+
+- name: Install Arch from bootstrap chroot
+  ansible.builtin.command: >
+    chroot {{ bootstrap_chroot_dir }} /usr/bin/pacstrap {{ chroot_dir }} base {{ install_archlinux.packages | join(" ") }} {{ ucode }}
+  become: true
+  become_user: root
+  changed_when: false
+  when:
+    - in_rescue_system
+    - not pacstrap_bootstrap_chroot_done.stat.exists
+
+- name: Add state file for pacstrap from bootstrap chroot
+  ansible.builtin.file:
+    path: "{{ bootstrap_chroot_dir }}{{ chroot_dir }}/pacstrap_done"
+    group: root
+    mode: "0600"
+    owner: root
+    state: touch
+  become: true
+  become_user: root
+  changed_when: false
+  when: in_rescue_system
+
+- name: Install Arch from install medium
+  ansible.builtin.command: >
+    pacstrap {{ chroot_dir }} base {{ install_archlinux.packages | join(" ") }} {{ ucode }}
+  become: true
+  become_user: root
+  changed_when: false
+  when:
+    - in_install_medium
+    - not pacstrap_chroot_done.stat.exists
+
+- name: Add state file for pacstrap from install medium
+  ansible.builtin.file:
+    path: "{{ chroot_dir }}/pacstrap_done"
+    group: root
+    mode: "0600"
+    owner: root
+    state: touch
+  become: true
+  become_user: root
+  changed_when: false
+  when: in_install_medium
+
+# TODO: unmount chroot_dir from bootstrap_chroot
+# TODO: mount chroot_dir from bootstrap_chroot

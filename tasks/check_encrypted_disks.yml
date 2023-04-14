@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Set fact about target root partitions
+  ansible.builtin.set_fact:
+    root_partitions: "{{ root_partitions + ['/dev/mapper/' + install_archlinux.filesystems.root.devmapper_prefix + i | string] }}"
+  loop: "{{ system_disks_short }}"
+  loop_control:
+    index_var: i
+
+- name: Set fact about whether a partition for / has already been encrypted
+  ansible.builtin.set_fact:
+    root_partition_encrypted: true
+  loop: "{{ system_disks_short | flatten(levels=1) }}"
+  loop_control:
+    index_var: i
+  when:
+    - ansible_facts.devices[item]['partitions'][root_partitions_short[i]]['links']['labels'] is defined
+    - ansible_facts.devices[item]['partitions'][root_partitions_short[i]]['links']['labels'] == [['root', i] | join('')]
+    - root_partition_type.results[i].stdout == "crypto_LUKS"
+
+- name: Set fact about whether encrypted partitions for / are already unlocked
+  ansible.builtin.set_fact:
+    root_partition_unlocked: true
+  loop: "{{ system_disks_short }}"
+  loop_control:
+    index_var: i
+  when:
+    - ansible_facts.devices[["dm-", i] | join('')] is defined
+
+- name: Open encrypted partitions
+  ansible.builtin.include_tasks: open_encrypted_partitions.yml
+  when:
+    - root_partition_encrypted
+    - not root_partition_unlocked
+
+- name: Get partition type for encrypted root partitions
+  ansible.builtin.command:
+    cmd: blkid -o value -s TYPE {{ item }}
+  changed_when: false
+  ignore_errors: true
+  loop: "{{ root_partitions }}"
+  register: encrypted_root_partition_type
+  when: partitions_created
+
+- name: Set fact about whether encrypted partition for / is already formatted
+  ansible.builtin.set_fact:
+    root_partition_formatted: true
+  loop: "{{ system_disks_short }}"
+  loop_control:
+    index_var: i
+  when:
+    - root_partition_encrypted
+    - root_partition_unlocked
+    - encrypted_root_partition_type.results[i].stdout == install_archlinux.filesystems.root.type
+
+- name: Set fact about whether partition for / is unlocked
+  ansible.builtin.set_fact:
+    root_partition_unlocked: true
+  when:
+    - root_partition_encrypted
+    - not root_partition_unlocked
+    - root_partition_formatted

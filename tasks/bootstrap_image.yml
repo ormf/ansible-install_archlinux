@@ -1,0 +1,284 @@
+# SPDX-FileCopyrightText: 2023 David Runge <dvzrv@archlinux.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+
+- name: Set bootstrap chroot_dir fact
+  ansible.builtin.set_fact:
+    bootstrap_chroot_dir: "{{ install_archlinux.bootstrap.prefix_dir }}/{{ install_archlinux.bootstrap.chroot_dir }}"
+
+- name: Touch LOCK file on in chroot_dir
+  ansible.builtin.file:
+    path: "{{ chroot_dir }}/LOCK"
+    state: touch
+    group: root
+    owner: root
+    mode: "0644"
+  become: true
+  become_user: root
+  changed_when: false
+
+- name: Remove .gnupg dir
+  ansible.builtin.file:
+    path: /root/.gnupg
+    force: "yes"
+    state: absent
+  become: true
+  become_user: root
+  changed_when: false
+
+- name: Import known PGP key
+  ansible.builtin.command:
+    cmd: >
+      gpg --keyserver hkps://keyserver.ubuntu.com
+      --recv-keys {{ install_archlinux.bootstrap.sigkey }}
+  args:
+    creates: /root/.gnupg
+  become: true
+  become_user: root
+  changed_when: false
+
+- name: Set bootstrap image facts
+  ansible.builtin.set_fact:
+    bootstrap_image: archlinux-bootstrap-x86_64.tar.gz
+    bootstrap_image_sig: archlinux-bootstrap-x86_64.tar.gz.sig
+
+- name: Get status of bootstrap image
+  ansible.builtin.stat:
+    path: "{{ install_archlinux.bootstrap.prefix_dir }}/{{ bootstrap_image }}"
+  become: true
+  become_user: root
+  register: bootstrap_image_stat
+
+- name: Get status of bootstrap image signature
+  ansible.builtin.stat:
+    path: "{{ install_archlinux.bootstrap.prefix_dir }}/{{ bootstrap_image_sig }}"
+  become: true
+  become_user: root
+  register: bootstrap_image_sig_stat
+
+- name: Download bootstrap image
+  ansible.builtin.get_url:
+    group: root
+    owner: root
+    mode: "0644"
+    url: https://mirrors.kernel.org/archlinux/iso/{{ install_archlinux.bootstrap.version }}/{{ bootstrap_image }}
+    dest: "{{ install_archlinux.bootstrap.prefix_dir }}"
+  become: true
+  become_user: root
+  when: not bootstrap_image_stat.stat.exists
+
+- name: Download bootstrap image signature
+  ansible.builtin.get_url:
+    group: root
+    owner: root
+    mode: "0644"
+    url: https://mirrors.kernel.org/archlinux/iso/{{ install_archlinux.bootstrap.version }}/{{ bootstrap_image_sig }}
+    dest: "{{ install_archlinux.bootstrap.prefix_dir }}"
+  become: true
+  become_user: root
+  when: not bootstrap_image_sig_stat.stat.exists
+
+- name: Verify bootstrap image
+  ansible.builtin.command:
+    cmd: >
+      gpg --trust-model tofu
+      --verify {{ bootstrap_image_sig }}
+  args:
+    chdir: "{{ install_archlinux.bootstrap.prefix_dir }}"
+  become: true
+  become_user: root
+  changed_when: false
+
+- name: Extract bootstrap image
+  ansible.builtin.unarchive:
+    dest: "{{ install_archlinux.bootstrap.prefix_dir }}"
+    src: "{{ install_archlinux.bootstrap.prefix_dir }}/{{ bootstrap_image }}"
+    creates: "{{ bootstrap_chroot_dir }}"
+    group: root
+    owner: root
+    remote_src: "yes"
+  become: true
+  become_user: root
+
+- name: Copy resolv.conf to bootstrap chroot
+  ansible.builtin.copy:
+    remote_src: true
+    src: /etc/resolv.conf
+    dest: "{{ bootstrap_chroot_dir }}/etc/resolv.conf"
+    group: root
+    owner: root
+    mode: "0644"
+  become: true
+  become_user: root
+
+- name: Bind-mount bootstrap chroot onto itself (because pacman...)
+  ansible.posix.mount:
+    path: "{{ bootstrap_chroot_dir }}"
+    src: "{{ bootstrap_chroot_dir }}"
+    state: mounted
+    opts: bind
+    fstype: none
+  become: true
+  become_user: root
+
+- name: Mount /proc to bootstrap chroot
+  ansible.posix.mount:
+    path: "{{ bootstrap_chroot_dir }}/proc"
+    src: proc
+    state: mounted
+    opts: nosuid,noexec,nodev
+    fstype: proc
+  become: true
+  become_user: root
+
+- name: Get status of bootstrap /proc
+  ansible.builtin.stat:
+    path: "{{ bootstrap_chroot_dir }}/proc/uptime"
+  become: true
+  become_user: root
+  register: bootstrap_proc
+
+- name: Fail if bootstrap /proc does not exist
+  ansible.builtin.fail:
+    msg: Bootstrap /proc does not exist after mounting it
+  when: not bootstrap_proc.stat.exists
+
+- name: Mount /sys to bootstrap chroot
+  ansible.posix.mount:
+    path: "{{ bootstrap_chroot_dir }}/sys"
+    src: sys
+    state: mounted
+    opts: nosuid,noexec,nodev,ro
+    fstype: sysfs
+  become: true
+  become_user: root
+
+- name: Get status of bootstrap /sys
+  ansible.builtin.stat:
+    path: "{{ bootstrap_chroot_dir }}/sys/dev"
+  become: true
+  become_user: root
+  register: bootstrap_sys
+
+- name: Fail if bootstrap /sys does not exist
+  ansible.builtin.fail:
+    msg: Bootstrap /sys does not exist after mounting it
+  when: not bootstrap_sys.stat.exists
+
+- name: Mount /dev to bootstrap chroot
+  ansible.posix.mount:
+    path: "{{ bootstrap_chroot_dir }}/dev"
+    src: udev
+    state: mounted
+    opts: mode=0755,nosuid
+    fstype: devtmpfs
+  become: true
+  become_user: root
+
+- name: Mount /dev/pts to bootstrap chroot
+  ansible.posix.mount:
+    path: "{{ bootstrap_chroot_dir }}/dev/pts"
+    src: devpts
+    state: mounted
+    opts: mode=0620,gid=5,nosuid,noexec
+    fstype: devpts
+  become: true
+  become_user: root
+
+- name: Mount /dev/shm to bootstrap chroot
+  ansible.posix.mount:
+    path: "{{ bootstrap_chroot_dir }}/dev/shm"
+    src: shm
+    state: mounted
+    opts: mode=1777,nosuid,nodev
+    fstype: tmpfs
+  become: true
+  become_user: root
+
+- name: Get status of bootstrap /dev
+  ansible.builtin.stat:
+    path: "{{ bootstrap_chroot_dir }}/dev/zero"
+  become: true
+  become_user: root
+  register: bootstrap_dev
+
+- name: Fail if bootstrap /dev does not exist
+  ansible.builtin.fail:
+    msg: Bootstrap /dev does not exist after mounting it
+  when: not bootstrap_dev.stat.exists
+
+- name: Mount /run to bootstrap chroot
+  ansible.posix.mount:
+    path: "{{ bootstrap_chroot_dir }}/run"
+    src: /run
+    state: mounted
+    opts: bind
+    fstype: run
+  become: true
+  become_user: root
+
+- name: Mount /tmp as tmpfs on bootstrap chroot
+  ansible.posix.mount:
+    path: "{{ bootstrap_chroot_dir }}/tmp"
+    src: tmp
+    state: mounted
+    opts: mode=1777,strictatime,nodev,nosuid
+    fstype: tmpfs
+  become: true
+  become_user: root
+
+- name: Mount chroot_dir to install_archlinux.bootstrap.chroot_dir/chroot_dir
+  ansible.posix.mount:
+    path: "{{ bootstrap_chroot_dir }}{{ chroot_dir }}"
+    src: "{{ chroot_dir }}"
+    state: mounted
+    opts: bind
+    fstype: none
+  become: true
+  become_user: root
+  when: not bootstrap_root_partition_mounted
+
+- name: Get status of LOCK file in install_archlinux.bootstrap.chroot_dir/chroot_dir
+  ansible.builtin.stat:
+    path: "{{ bootstrap_chroot_dir }}{{ chroot_dir }}/LOCK"
+  become: true
+  become_user: root
+  register: bootstrap_mnt
+
+- name: Fail if LOCK does not exist in install_archlinux.bootstrap.chroot_dir/chroot_dir
+  ansible.builtin.fail:
+    msg: Bootstrap {{ chroot_dir }} does not exist after mounting it
+  when: not bootstrap_mnt.stat.exists
+
+- name: Mount chroot_dir/home to install_archlinux.bootstrap.chroot_dir
+  ansible.posix.mount:
+    path: "{{ bootstrap_chroot_dir }}{{ chroot_dir }}/home"
+    src: "{{ chroot_dir }}/home"
+    state: mounted
+    opts: bind
+    fstype: none
+  become: true
+  become_user: root
+  when: not bootstrap_home_partition_mounted
+
+- name: Mount chroot_dir/boot to bootstrap chroot
+  ansible.posix.mount:
+    path: "{{ bootstrap_chroot_dir }}{{ chroot_dir }}/boot"
+    src: "{{ chroot_dir }}/boot"
+    state: mounted
+    opts: bind
+    fstype: none
+  become: true
+  become_user: root
+
+# TODO: mount /tmp in bootstrap_chroot_dir
+
+- name: Mount /var/cache as tmpfs on bootstrap chroot
+  ansible.posix.mount:
+    path: "{{ bootstrap_chroot_dir }}/var/cache"
+    src: tmp
+    state: mounted
+    opts: mode=1777,strictatime,nodev,nosuid
+    fstype: tmpfs
+  become: true
+  become_user: root
