@@ -68,7 +68,7 @@
 
 - name: Set fact about target boot partitions
   ansible.builtin.set_fact:
-    boot_partitions: "{{ boot_partitions + [[item, "p", root_partition_number] | join('')] }}"
+    boot_partitions: "{{ boot_partitions + [[item, partition_identifier, root_partition_number] | join('')] }}"
   loop: "{{ install_archlinux.system_disks }}"
 
 - name: Set fact about root device short names (on UEFI system)
