@@ -4,7 +4,7 @@
 
 - name: Set fact about target root partitions
   ansible.builtin.set_fact:
-    root_partitions: "{{ root_partitions + ['/dev/' + item + root_partition_number | string] }}"
+    root_partitions: "{{ root_partitions + ['/dev/' + item + partition_identifier + root_partition_number | string] }}"
   loop: "{{ system_disks_short }}"
 
 - name: Get partition type for plain root partitions
